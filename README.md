@@ -107,6 +107,10 @@ To design a normalized and efficient relational database schema for a Tax Filing
      ```sql
      CALL add_document_version(1, 'Form16_2023_v2.pdf', 'reviewed');
      ```
+   - Check if the new versioned document was added:
+     ```sql
+     SELECT * FROM documents WHERE document_name = 'Form16_2023_v2.pdf';
+     ```
 
 ---
 
