@@ -1,124 +1,139 @@
 # Tax Filing & Document Manager
 
 ## Project Overview
-This project is a MySQL-only backend solution designed to manage tax-related documents, user data, tax filings, reminders, and related metadata. It uses MySQL features like DDL, DML, triggers, procedures, views, and constraints without involving any frontend/backend code.
+This is a MySQL-only project designed to help users manage their tax documents, filings, reminders, and collaboration with others. The system uses SQL features like triggers, views, procedures, soft deletes, indexing, and more. It doesn't include any frontend or backend code.
 
 ## Objective
-To design a normalized and efficient relational database schema for a Tax Filing and Document Manager that includes complete support for document storage, versioning, user access control, audit logging, reminders, and optional collaboration features.
+Build a normalized and efficient database for managing tax-related documents. The system should support document versioning, tagging, audit logs, user reminders, and allow optional sharing with permissions.
 
 ---
 
 ## Database Schema Design
 
 ### 1. `users`
-- Stores basic user profile and login information.
-- Includes: `user_id`, `username`, `email`, `password_hash`, `created_at`
+- Stores user login details.
+- Fields: `user_id`, `username`, `email`, `password_hash`, `created_at`
 
 ### 2. `documents`
-- Stores metadata about tax documents uploaded by users.
-- Tracks document name, type, year, version, status (`uploaded`, `reviewed`, `approved`), and `is_deleted` for soft deletion.
-- Includes a foreign key to `users`.
+- Stores metadata of each uploaded document.
+- Tracks: name, type, year, version, status, deletion flag.
+- Linked to `users` via `user_id`.
 
 ### 3. `document_tags` & `document_tag_map`
-- Tagging system for better document classification.
-- `document_tags`: stores tag names.
-- `document_tag_map`: many-to-many relationship between `documents` and `tags`.
+- Allows tagging documents for better search.
+- Many-to-many relation between documents and tags.
 
 ### 4. `tax_filings`
-- Tracks the tax filing activity per user and year.
-- Stores the filing status (`not_started`, `in_progress`, `filed`), along with timestamps.
-- Includes soft delete field `is_deleted`.
+- Tracks tax filings per user and year.
+- Tracks status and soft delete status.
 
 ### 5. `audit_logs`
-- Logs all critical user actions such as uploads, edits, or deletions.
-- Tracks `user_id`, `document_id`, `action`, and `timestamp`.
+- Records important user actions (upload/versioning).
 
 ### 6. `reminders`
-- Stores user-defined reminders for tax deadlines.
-- Includes message, due date (`remind_date`), and status (`is_done`).
+- Stores reminders set by users.
+- Fields include message, due date, and done status.
 
-### 7. `shared_documents` (Bonus)
-- Enables users to share documents with others.
-- Supports permissions (`view` or `edit`) for collaborative workflows.
+### 7. `shared_documents`
+- Enables document sharing with others.
+- Permissions supported: `view`, `edit`.
 
 ---
 
-## Triggers Implemented
+## Indexes Added
+To make queries and joins faster:
+- `documents`: indexed on `user_id`, `year`, `status`
+- `tax_filings`: indexed on `user_id`, `filing_year`
+- `document_tag_map`: indexed on `document_id`, `tag_id`
+- `audit_logs`: indexed on `user_id`
 
-- `trg_update_filing_status`: Automatically updates the user's `tax_filings` status to `in_progress` when a document is uploaded for that year.
-- `trg_log_document_upload`: Logs each upload action to the `audit_logs` table.
+---
+
+## Triggers
+
+### `trg_documents_insert`
+- After a document is uploaded:
+  - Updates the tax filing status to `in_progress`.
+  - Logs the upload in `audit_logs`.
 
 ---
 
 ## Stored Procedure
 
-- `add_document_version`: Implements document versioning by duplicating an existing document record with an incremented version number, a new name, and an updated status.
+### `add_document_version`
+- Creates a new version of an existing document.
+- Increments version number.
+- Logs the version update in `audit_logs`.
 
 ---
 
 ## View
 
-- `filing_summary`: Provides a report per user and per year, showing the number of documents uploaded and how many are still pending review.
+### `filing_summary`
+- Shows document counts by status per user per year:
+  - Total, pending, reviewed, approved.
 
 ---
 
-## Testing 
+## Sample Data
+Inserted for:
+- Users
+- Tags
+- Tax filings
+- Documents
+- Tag map
+- Reminders
 
- Ensure you're connected to a MySQL client (e.g., Workbench, CLI, phpMyAdmin) and execute the provided SQL script.
+---
 
-### Steps:
+## Testing Guide
+Make sure to run the full SQL script, then use these queries:
 
-1. **Run the full SQL script (`tax_filing_manager.sql`)**:
-   - This will create the database, tables, triggers, procedures, view, and populate sample data.
+### 1. View documents (excluding soft-deleted):
+```sql
+SELECT * FROM documents WHERE user_id = 1 AND is_deleted = FALSE;
+```
 
-2. **Run the following queries to test core features**:
+### 2. View document tags:
+```sql
+SELECT t.tag_name
+FROM document_tags t
+JOIN document_tag_map dtm ON t.tag_id = dtm.tag_id
+WHERE dtm.document_id = 1;
+```
 
-   - View documents for a user:
-     ```sql
-     SELECT * FROM documents WHERE user_id = 1 AND is_deleted = FALSE;
-     ```
+### 3. View audit logs:
+```sql
+SELECT * FROM audit_logs WHERE user_id = 1;
+```
 
-   - View tags associated with a document:
-     ```sql
-     SELECT t.tag_name
-     FROM document_tags t
-     JOIN document_tag_map dtm ON t.tag_id = dtm.tag_id
-     WHERE dtm.document_id = 1;
-     ```
+### 4. View shared documents:
+```sql
+SELECT d.document_name, sd.shared_with_user, sd.permission
+FROM shared_documents sd
+JOIN documents d ON sd.document_id = d.document_id;
+```
 
-   - View audit logs:
-     ```sql
-     SELECT * FROM audit_logs WHERE user_id = 1;
-     ```
+### 5. Filing summary report:
+```sql
+SELECT * FROM filing_summary;
+```
 
-   - View shared documents:
-     ```sql
-     SELECT d.document_name, sd.shared_with_user, sd.permission
-     FROM shared_documents sd
-     JOIN documents d ON sd.document_id = d.document_id;
-     ```
+### 6. Add a document version:
+```sql
+CALL add_document_version(1, 'Form16_2023_v2.pdf', 'reviewed');
+```
 
-   - View filing summary:
-     ```sql
-     SELECT * FROM filing_summary;
-     ```
-
-   - Test versioning procedure:
-     ```sql
-     CALL add_document_version(1, 'Form16_2023_v2.pdf', 'reviewed');
-     ```
-   - Check if the new versioned document was added:
-     ```sql
-     SELECT * FROM documents WHERE document_name = 'Form16_2023_v2.pdf';
-     ```
+### 7. Check new version:
+```sql
+SELECT * FROM documents WHERE document_name = 'Form16_2023_v2.pdf';
+```
 
 ---
 
 ## Additional Features Summary
 
-- **Soft Deletes**: `is_deleted` flag used in both `documents` and `tax_filings` instead of hard deletes.
-- **Multi-user Collaboration**: Implemented using `shared_documents` with permission levels.
-- **Automated Status Updates**: Trigger ensures filing status is automatically updated when a document is uploaded.
-- **Reporting**: View `filing_summary` summarizes document status per user/year.
-
----
+- **Soft Deletes**: Supported using `is_deleted` flag in relevant tables.
+- **Multi-user Collaboration**: Sharing with view/edit access.
+- **Auto Status Updates**: Trigger updates filing status.
+- **Reporting**: View `filing_summary` gives yearly breakdown.
